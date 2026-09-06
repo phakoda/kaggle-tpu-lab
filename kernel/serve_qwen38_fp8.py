@@ -54,8 +54,17 @@ def _load_user_config():
         raise SystemExit(f"Invalid {CONFIG_FILE.name}: {exc}") from exc
 
 
+cfg = {**FP8_DEFAULTS, **_load_user_config(), **(CFG or {})}
+if not cfg.get("weights_dataset"):
+    cfg["weights_dataset"] = "__hf_fp8_download__"
+if not cfg.get("env_dataset"):
+    cfg["env_dataset"] = "__fp8_env_not_attached__"
+
+# A Hugging Face token is required only when the checkpoint must be downloaded.
+# A complete Kaggle dataset mirror can run without exposing any HF credential.
 token = _get_hf_token()
-if not token:
+needs_hf_download = cfg["weights_dataset"] == "__hf_fp8_download__"
+if needs_hf_download and not token:
     raise SystemExit(
         "\nHF_TOKEN is required because orcarouter/Qwen3.8-27B-Uncensored-FP8 "
         "requires accepting its Hugging Face access conditions.\n"
@@ -65,13 +74,9 @@ if not token:
         "Alternatively attach a Kaggle dataset containing the complete checkpoint and set "
         "weights_dataset in serve_config.json.\n"
     )
-os.environ["HF_TOKEN"] = token
+if token:
+    os.environ["HF_TOKEN"] = token
 
-cfg = {**FP8_DEFAULTS, **_load_user_config(), **(CFG or {})}
-if not cfg.get("weights_dataset"):
-    cfg["weights_dataset"] = "__hf_fp8_download__"
-if not cfg.get("env_dataset"):
-    cfg["env_dataset"] = "__fp8_env_not_attached__"
 # Never leak credentials into serve_config.json.
 cfg.pop("hf_token", None)
 CONFIG_FILE.write_text(json.dumps(cfg, indent=2))
